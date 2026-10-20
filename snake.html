@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Game Snake</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                padding: 1rem;
+                font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+                background: #0f172a;
+                color: #e2e8f0;
+            }
+
+            h1 {
+                margin: 0;
+            }
+
+            .kembali {
+                color: #94a3b8;
+                text-decoration: none;
+            }
+
+            .kembali:hover {
+                color: #e2e8f0;
+            }
+
+            .info {
+                display: flex;
+                gap: 2rem;
+                font-size: 1.1rem;
+            }
+
+            .papan {
+                position: relative;
+                width: min(400px, 100%);
+            }
+
+            canvas {
+                display: block;
+                width: 100%;
+                aspect-ratio: 1;
+                background: #1e293b;
+                border: 3px solid #334155;
+                border-radius: 8px;
+            }
+
+            .pesan {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                margin: 0;
+                padding: 1rem;
+                text-align: center;
+                font-size: 1.2rem;
+                background: rgba(15, 23, 42, 0.75);
+                border-radius: 8px;
+            }
+
+            .pesan[hidden] {
+                display: none;
+            }
+
+            button {
+                font: inherit;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                background: #22c55e;
+                color: #052e16;
+                font-weight: 700;
+                padding: 0.6rem 1.5rem;
+            }
+
+            .tombol-arah {
+                display: grid;
+                grid-template-columns: repeat(3, 56px);
+                gap: 6px;
+            }
+
+            .tombol-arah button {
+                height: 56px;
+                padding: 0;
+                background: #334155;
+                color: #e2e8f0;
+            }
+
+            .tombol-arah [data-arah="atas"] { grid-column: 2; }
+            .tombol-arah [data-arah="kiri"] { grid-column: 1; grid-row: 2; }
+            .tombol-arah [data-arah="bawah"] { grid-column: 2; grid-row: 2; }
+            .tombol-arah [data-arah="kanan"] { grid-column: 3; grid-row: 2; }
+
+            .petunjuk {
+                margin: 0;
+                color: #94a3b8;
+                font-size: 0.9rem;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <a class="kembali" href="index.html">← Pilih game lain</a>
+
+        <h1>🐍 Game Snake</h1>
+
+        <div class="info">
+            <span>Skor: <strong id="skor">0</strong></span>
+            <span>Terbaik: <strong id="terbaik">0</strong></span>
+        </div>
+
+        <div class="papan">
+            <canvas id="kanvas" width="400" height="400"></canvas>
+            <p class="pesan" id="pesan">Tekan Spasi atau tombol Mulai</p>
+        </div>
+
+        <button id="tombol-mulai">Mulai</button>
+
+        <div class="tombol-arah">
+            <button data-arah="atas" aria-label="Atas">▲</button>
+            <button data-arah="kiri" aria-label="Kiri">◀</button>
+            <button data-arah="bawah" aria-label="Bawah">▼</button>
+            <button data-arah="kanan" aria-label="Kanan">▶</button>
+        </div>
+
+        <p class="petunjuk">Kontrol: tombol panah / WASD · Spasi = mulai / jeda</p>
+
+        <script>
+            // ===== PENGATURAN =====
+            const kanvas = document.getElementById("kanvas");
+            const ctx = kanvas.getContext("2d");
+            const UKURAN_KOTAK = 20;                       // ukuran satu kotak (piksel)
+            const JUMLAH_KOTAK = kanvas.width / UKURAN_KOTAK; // 20 x 20 kotak
+            const KECEPATAN_AWAL = 150;                    // milidetik per langkah
+
+            const elSkor = document.getElementById("skor");
+            const elTerbaik = document.getElementById("terbaik");
+            const elPesan = document.getElementById("pesan");
+            const tombolMulai = document.getElementById("tombol-mulai");
+
+            const ARAH = {
+                atas: { x: 0, y: -1 },
+                bawah: { x: 0, y: 1 },
+                kiri: { x: -1, y: 0 },
+                kanan: { x: 1, y: 0 },
+            };
+
+            // ===== STATUS GAME =====
+            let ular, arah, arahBerikutnya, makanan, skor, kecepatan, timer;
+            let sedangMain = false;
+            let terbaik = Number(localStorage.getItem("snake-terbaik")) || 0;
+            elTerbaik.textContent = terbaik;
+
+            function mulaiGame() {
+                ular = [
+                    { x: 10, y: 10 },
+                    { x: 9, y: 10 },
+                    { x: 8, y: 10 },
+                ];
+                arah = ARAH.kanan;
+                arahBerikutnya = ARAH.kanan;
+                skor = 0;
+                kecepatan = KECEPATAN_AWAL;
+                elSkor.textContent = skor;
+                taruhMakanan();
+                lanjutkan();
+            }
+
+            function lanjutkan() {
+                sedangMain = true;
+                elPesan.hidden = true;
+                tombolMulai.textContent = "Jeda";
+                clearInterval(timer);
+                timer = setInterval(langkah, kecepatan);
+            }
+
+            function jeda() {
+                sedangMain = false;
+                clearInterval(timer);
+                tampilkanPesan("Jeda — tekan Spasi untuk lanjut");
+                tombolMulai.textContent = "Lanjut";
+            }
+
+            function gameOver() {
+                sedangMain = false;
+                clearInterval(timer);
+                ular = null; // tandai bahwa game harus diulang dari awal
+                if (skor > terbaik) {
+                    terbaik = skor;
+                    localStorage.setItem("snake-terbaik", terbaik);
+                    elTerbaik.textContent = terbaik;
+                }
+                tampilkanPesan(`Game Over! Skor: ${skor}`);
+                tombolMulai.textContent = "Main Lagi";
+            }
+
+            function tampilkanPesan(teks) {
+                elPesan.textContent = teks;
+                elPesan.hidden = false;
+            }
+
+            // Taruh makanan di kotak acak yang tidak tertutup badan ular
+            function taruhMakanan() {
+                do {
+                    makanan = {
+                        x: Math.floor(Math.random() * JUMLAH_KOTAK),
+                        y: Math.floor(Math.random() * JUMLAH_KOTAK),
+                    };
+                } while (ular.some((bagian) => bagian.x === makanan.x && bagian.y === makanan.y));
+            }
+
+            // ===== SATU LANGKAH PERMAINAN =====
+            function langkah() {
+                arah = arahBerikutnya;
+                const kepala = { x: ular[0].x + arah.x, y: ular[0].y + arah.y };
+
+                // Menabrak dinding?
+                const kenaDinding =
+                    kepala.x < 0 || kepala.y < 0 || kepala.x >= JUMLAH_KOTAK || kepala.y >= JUMLAH_KOTAK;
+                // Menabrak badan sendiri?
+                const kenaBadan = ular.some((bagian) => bagian.x === kepala.x && bagian.y === kepala.y);
+
+                if (kenaDinding || kenaBadan) {
+                    gameOver();
+                    return;
+                }
+
+                ular.unshift(kepala); // tambah kepala baru di depan
+
+                if (kepala.x === makanan.x && kepala.y === makanan.y) {
+                    skor++;
+                    elSkor.textContent = skor;
+                    taruhMakanan();
+                    // Makin lama makin cepat (paling cepat 60 ms)
+                    if (kecepatan > 60) {
+                        kecepatan -= 4;
+                        clearInterval(timer);
+                        timer = setInterval(langkah, kecepatan);
+                    }
+                } else {
+                    ular.pop(); // tidak makan: buang ekor supaya panjang tetap
+                }
+
+                gambar();
+            }
+
+            // ===== MENGGAMBAR =====
+            function gambarKotak(x, y, warna) {
+                ctx.fillStyle = warna;
+                ctx.fillRect(x * UKURAN_KOTAK + 1, y * UKURAN_KOTAK + 1, UKURAN_KOTAK - 2, UKURAN_KOTAK - 2);
+            }
+
+            function gambar() {
+                ctx.clearRect(0, 0, kanvas.width, kanvas.height);
+                if (!ular) return;
+
+                // Makanan
+                gambarKotak(makanan.x, makanan.y, "#ef4444");
+
+                // Ular: kepala lebih terang dari badan
+                ular.forEach((bagian, i) => {
+                    gambarKotak(bagian.x, bagian.y, i === 0 ? "#4ade80" : "#16a34a");
+                });
+            }
+
+            // ===== KONTROL =====
+            function ubahArah(namaArah) {
+                const baru = ARAH[namaArah];
+                // Ular tidak boleh langsung berbalik arah
+                if (baru.x === -arah.x && baru.y === -arah.y) return;
+                arahBerikutnya = baru;
+            }
+
+            function tombolMulaiDitekan() {
+                if (sedangMain) jeda();
+                else if (ular) lanjutkan();
+                else mulaiGame();
+            }
+
+            const tombolKeyboard = {
+                ArrowUp: "atas", w: "atas", W: "atas",
+                ArrowDown: "bawah", s: "bawah", S: "bawah",
+                ArrowLeft: "kiri", a: "kiri", A: "kiri",
+                ArrowRight: "kanan", d: "kanan", D: "kanan",
+            };
+
+            document.addEventListener("keydown", (e) => {
+                if (e.key === " ") {
+                    e.preventDefault();
+                    tombolMulaiDitekan();
+                    return;
+                }
+                const namaArah = tombolKeyboard[e.key];
+                if (namaArah && sedangMain) {
+                    e.preventDefault(); // supaya halaman tidak ikut menggulir
+                    ubahArah(namaArah);
+                }
+            });
+
+            tombolMulai.addEventListener("click", () => {
+                tombolMulai.blur(); // agar Spasi tidak ikut "mengklik" tombol ini lagi
+                tombolMulaiDitekan();
+            });
+
+            document.querySelectorAll(".tombol-arah button").forEach((tombol) => {
+                tombol.addEventListener("click", () => {
+                    if (sedangMain) ubahArah(tombol.dataset.arah);
+                });
+            });
+
+            gambar();
+        </script>
+    </body>
+</html>

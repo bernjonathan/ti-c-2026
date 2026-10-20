@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Main Padel</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 0.75rem;
+                padding: 1rem;
+                font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+                background: #0c1a2e;
+                color: #e0f2fe;
+            }
+
+            h1 {
+                margin: 0;
+            }
+
+            .kembali {
+                color: #7dd3fc;
+                text-decoration: none;
+            }
+
+            .kembali:hover {
+                color: #e0f2fe;
+            }
+
+            .papan-skor {
+                display: grid;
+                grid-template-columns: auto auto auto;
+                gap: 0.25rem 1.25rem;
+                padding: 0.5rem 1rem;
+                background: #13263f;
+                border-radius: 10px;
+                text-align: center;
+            }
+
+            .papan-skor .judul {
+                font-size: 0.8rem;
+                color: #7dd3fc;
+            }
+
+            .papan-skor strong {
+                font-size: 1.3rem;
+            }
+
+            .lapangan {
+                position: relative;
+                width: min(340px, 100%);
+            }
+
+            canvas {
+                display: block;
+                width: 100%;
+                border-radius: 10px;
+            }
+
+            .pesan {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                margin: 0;
+                padding: 1rem;
+                text-align: center;
+                font-size: 1.2rem;
+                background: rgba(12, 26, 46, 0.7);
+                border-radius: 10px;
+                white-space: pre-line;
+            }
+
+            .pesan[hidden] {
+                display: none;
+            }
+
+            button {
+                font: inherit;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                background: #facc15;
+                color: #422006;
+                font-weight: 700;
+                padding: 0.6rem 1.5rem;
+            }
+
+            .tombol-arah {
+                display: grid;
+                grid-template-columns: repeat(3, 52px);
+                gap: 6px;
+                touch-action: none;
+                user-select: none;
+            }
+
+            .tombol-arah button {
+                height: 52px;
+                padding: 0;
+                background: #1e3a5f;
+                color: #e0f2fe;
+            }
+
+            .tombol-arah [data-arah="atas"] { grid-column: 2; }
+            .tombol-arah [data-arah="kiri"] { grid-column: 1; grid-row: 2; }
+            .tombol-arah [data-arah="bawah"] { grid-column: 2; grid-row: 2; }
+            .tombol-arah [data-arah="kanan"] { grid-column: 3; grid-row: 2; }
+
+            .petunjuk {
+                margin: 0;
+                color: #7dd3fc;
+                font-size: 0.85rem;
+                text-align: center;
+                max-width: 400px;
+            }
+        </style>
+    </head>
+    <body>
+        <a class="kembali" href="index.html">← Pilih game lain</a>
+
+        <h1>🎾 Main Padel</h1>
+
+        <div class="papan-skor">
+            <span class="judul">Kamu</span>
+            <span class="judul">Game</span>
+            <span class="judul">Lawan</span>
+            <strong id="poin-pemain">0</strong>
+            <strong id="game">0 - 0</strong>
+            <strong id="poin-lawan">0</strong>
+        </div>
+
+        <div class="lapangan">
+            <canvas id="kanvas" width="340" height="620"></canvas>
+            <p class="pesan" id="pesan">Menang 3 game untuk juara!
+Tekan Spasi atau tombol Mulai</p>
+        </div>
+
+        <button id="tombol-utama">Mulai</button>
+
+        <div class="tombol-arah">
+            <button data-arah="atas" aria-label="Atas">▲</button>
+            <button data-arah="kiri" aria-label="Kiri">◀</button>
+            <button data-arah="bawah" aria-label="Bawah">▼</button>
+            <button data-arah="kanan" aria-label="Kanan">▶</button>
+        </div>
+
+        <p class="petunjuk">
+            Gerak: tombol panah / WASD · Spasi = servis.<br>
+            Dekati bola untuk memukul otomatis. Tahan ◀ / ▶ saat memukul untuk mengarahkan bola.<br>
+            Aturan padel: bola boleh memantul di lantai <b>sekali</b>, lalu boleh memantul di dinding kaca.
+            Pukulanmu harus jatuh di lantai lawan dulu sebelum kena dinding.
+        </p>
+
+        <script>
+            // ===== UKURAN LAPANGAN =====
+            const kanvas = document.getElementById("kanvas");
+            const ctx = kanvas.getContext("2d");
+            const TEPI = 30;                    // jarak lapangan ke tepi kanvas
+            const KIRI = TEPI;
+            const KANAN = kanvas.width - TEPI;
+            const ATAS = TEPI;
+            const BAWAH = kanvas.height - TEPI;
+            const LEBAR = KANAN - KIRI;
+            const TENGAH_X = (KIRI + KANAN) / 2;
+            const NET_Y = (ATAS + BAWAH) / 2;
+            const GARIS_SERVIS = (NET_Y - ATAS) * 0.695; // jarak garis servis dari net
+
+            // ===== FISIKA =====
+            const GRAVITASI = 500;      // percepatan jatuh bola (piksel/detik²)
+            const TINGGI_NET = 22;      // tinggi net (dalam satuan ketinggian bola "z")
+            const JANGKAUAN = 32;       // jarak raket bisa menjangkau bola
+            const KECEPATAN_PEMAIN = 230;
+            const KECEPATAN_LAWAN = 185;
+            const GAME_UNTUK_MENANG = 3;
+            const LABEL_POIN = ["0", "15", "30", "40"];
+
+            const elPoinPemain = document.getElementById("poin-pemain");
+            const elPoinLawan = document.getElementById("poin-lawan");
+            const elGame = document.getElementById("game");
+            const elPesan = document.getElementById("pesan");
+            const tombolUtama = document.getElementById("tombol-utama");
+
+            // ===== STATUS GAME =====
+            // "menunggu" | "servis" | "reli" | "jedaPoin" | "selesai"
+            let status = "menunggu";
+            let pemain, lawan, bola, poin, game, pemegangServis, waktuTerakhir, timerLawanServis;
+            const ditekan = { atas: false, bawah: false, kiri: false, kanan: false };
+
+            // ===== FUNGSI BANTU =====
+            function acak(min, max) {
+                return min + Math.random() * (max - min);
+            }
+
+            function batasi(nilai, min, max) {
+                return Math.max(min, Math.min(max, nilai));
+            }
+
+            // Bola sedang berada di sisi siapa? Bawah = pemain, atas = lawan
+            function sisiDari(y) {
+                return y > NET_Y ? "pemain" : "lawan";
+            }
+
+            function lawanDari(sisi) {
+                return sisi === "pemain" ? "lawan" : "pemain";
+            }
+
+            // ===== ALUR PERTANDINGAN =====
+            function mulaiPertandingan() {
+                poin = { pemain: 0, lawan: 0 };
+                game = { pemain: 0, lawan: 0 };
+                pemegangServis = "pemain";
+                tombolUtama.textContent = "Servis";
+                perbaruiPapanSkor();
+                siapkanServis();
+                requestAnimationFrame(putaran);
+            }
+
+            function siapkanServis() {
+                status = "servis";
+                elPesan.hidden = true;
+
+                // Servis bergantian dari kanan lalu kiri setiap poin
+                const dariKanan = (poin.pemain + poin.lawan) % 2 === 0;
+
+                // Posisi dilihat dari sudut pandang masing-masing pemain
+                pemain = { x: dariKanan ? KANAN - 60 : KIRI + 60, y: BAWAH - 25, warna: "#ef4444" };
+                lawan = { x: dariKanan ? KIRI + 60 : KANAN - 60, y: ATAS + 25, warna: "#22c55e" };
+
+                const server = pemegangServis === "pemain" ? pemain : lawan;
+                bola = {
+                    x: server.x,
+                    y: server.y + (pemegangServis === "pemain" ? -14 : 14),
+                    z: 20,
+                    vx: 0, vy: 0, vz: 0,
+                    pemukulTerakhir: null,
+                    pantulanLantai: 0,
+                };
+
+                clearTimeout(timerLawanServis);
+                if (pemegangServis === "lawan") {
+                    timerLawanServis = setTimeout(servis, 1000);
+                }
+            }
+
+            function servis() {
+                if (status !== "servis") return;
+                status = "reli";
+                const server = pemegangServis;
+                // Servis diarahkan menyilang ke kotak servis lawan
+                const keKiri = bola.x > TENGAH_X;
+                const tx = keKiri ? acak(KIRI + 25, TENGAH_X - 20) : acak(TENGAH_X + 20, KANAN - 25);
+                const ty = server === "pemain"
+                    ? NET_Y - acak(50, GARIS_SERVIS - 10)
+                    : NET_Y + acak(50, GARIS_SERVIS - 10);
+                pukul(server, tx, ty, 300);
+            }
+
+            function berikanPoin(pemenang, alasan) {
+                if (status !== "reli") return;
+                status = "jedaPoin";
+                poin[pemenang]++;
+
+                let teks = `${pemenang === "pemain" ? "Poin untukmu! 🎉" : "Poin untuk lawan"}\n${alasan}`;
+
+                // Golden point: siapa pun yang menang poin saat sudah 40 langsung menang game
+                if (poin[pemenang] === 4) {
+                    game[pemenang]++;
+                    poin = { pemain: 0, lawan: 0 };
+                    pemegangServis = lawanDari(pemegangServis);
+                    teks += `\n\nGame untuk ${pemenang === "pemain" ? "kamu" : "lawan"}!`;
+                }
+
+                perbaruiPapanSkor();
+
+                if (game[pemenang] === GAME_UNTUK_MENANG) {
+                    status = "selesai";
+                    tampilkanPesan(pemenang === "pemain"
+                        ? `🏆 Kamu juara!\n${game.pemain} - ${game.lawan}`
+                        : `Kamu kalah ${game.pemain} - ${game.lawan}\nCoba lagi!`);
+                    tombolUtama.textContent = "Main Lagi";
+                    return;
+                }
+
+                tampilkanPesan(teks);
+                setTimeout(siapkanServis, 1600);
+            }
+
+            function perbaruiPapanSkor() {
+                elPoinPemain.textContent = LABEL_POIN[poin.pemain];
+                elPoinLawan.textContent = LABEL_POIN[poin.lawan];
+                elGame.textContent = `${game.pemain} - ${game.lawan}`;
+            }
+
+            function tampilkanPesan(teks) {
+                elPesan.textContent = teks;
+                elPesan.hidden = false;
+            }
+
+            // ===== MEMUKUL BOLA =====
+            // Hitung kecepatan bola supaya jatuh tepat di titik (tx, ty) dan melewati net
+            function pukul(sisi, tx, ty, kecepatan) {
+                const jarakTempuh = Math.hypot(tx - bola.x, ty - bola.y);
+                let durasi = jarakTempuh / kecepatan;
+
+                for (let coba = 0; coba < 10; coba++) {
+                    bola.vx = (tx - bola.x) / durasi;
+                    bola.vy = (ty - bola.y) / durasi;
+                    bola.vz = (0.5 * GRAVITASI * durasi * durasi - bola.z) / durasi;
+
+                    // Cek ketinggian bola saat melewati net
+                    const waktuKeNet = (NET_Y - bola.y) / bola.vy;
+                    const tinggiDiNet = bola.z + bola.vz * waktuKeNet - 0.5 * GRAVITASI * waktuKeNet * waktuKeNet;
+                    if (tinggiDiNet > TINGGI_NET + 8) break;
+                    durasi *= 1.12; // terlalu rendah: pukul lebih melambung
+                }
+
+                bola.pemukulTerakhir = sisi;
+                bola.pantulanLantai = 0;
+            }
+
+            function cobaPukul(sisi, orang) {
+                if (bola.pemukulTerakhir === sisi) return;           // giliran lawan memukul
+                if (sisiDari(bola.y) !== sisi) return;               // bola belum di sisi sendiri
+                if (bola.z > 70) return;                             // terlalu tinggi
+                if (Math.hypot(bola.x - orang.x, bola.y - orang.y) > JANGKAUAN) return;
+
+                // Arah ke sisi lawan
+                const arahY = sisi === "pemain" ? -1 : 1;
+                let tx, ty, kecepatan;
+
+                if (sisi === "pemain") {
+                    // Arahkan dengan posisi bola terhadap badan + tombol kiri/kanan
+                    let geser = (bola.x - orang.x) * 3;
+                    if (ditekan.kiri) geser -= 90;
+                    if (ditekan.kanan) geser += 90;
+                    tx = TENGAH_X + geser + acak(-20, 20);
+                    ty = NET_Y + arahY * acak(80, NET_Y - ATAS - 30);
+                    kecepatan = ditekan.atas ? 400 : 340; // tahan ▲ = pukulan keras
+                } else {
+                    // Lawan mengarahkan bola menjauh dari posisi pemain
+                    tx = pemain.x > TENGAH_X ? acak(KIRI + 25, TENGAH_X) : acak(TENGAH_X, KANAN - 25);
+                    ty = NET_Y + arahY * acak(70, BAWAH - NET_Y - 30);
+                    kecepatan = acak(300, 370);
+                }
+
+                tx = batasi(tx, KIRI + 20, KANAN - 20);
+                pukul(sisi, tx, ty, kecepatan);
+            }
+
+            // ===== PUTARAN GAME =====
+            function putaran(sekarang) {
+                const dt = Math.min((sekarang - (waktuTerakhir ?? sekarang)) / 1000, 0.04);
+                waktuTerakhir = sekarang;
+
+                if (status === "servis" || status === "reli") {
+                    gerakkanPemain(dt);
+                    if (status === "reli") {
+                        gerakkanLawan(dt);
+                        gerakkanBola(dt);
+                        cobaPukul("pemain", pemain);
+                        cobaPukul("lawan", lawan);
+                    }
+                }
+
+                gambar();
+                if (status !== "selesai") requestAnimationFrame(putaran);
+            }
+
+            function gerakkanPemain(dt) {
+                let dx = 0;
+                let dy = 0;
+                if (ditekan.kiri) dx -= 1;
+                if (ditekan.kanan) dx += 1;
+                if (ditekan.atas) dy -= 1;
+                if (ditekan.bawah) dy += 1;
+
+                // Saat servis, pemain diam di tempat servis
+                if (status === "servis") return;
+
+                const panjang = Math.hypot(dx, dy) || 1;
+                pemain.x = batasi(pemain.x + (dx / panjang) * KECEPATAN_PEMAIN * dt, KIRI + 10, KANAN - 10);
+                pemain.y = batasi(pemain.y + (dy / panjang) * KECEPATAN_PEMAIN * dt, NET_Y + 15, BAWAH - 10);
+            }
+
+            function gerakkanLawan(dt) {
+                let targetX, targetY;
+                if (bola.pemukulTerakhir === "pemain") {
+                    // Bola sedang menuju lawan: kejar bola
+                    targetX = bola.x;
+                    targetY = batasi(bola.y, ATAS + 15, NET_Y - 20);
+                } else {
+                    // Kembali ke posisi siaga
+                    targetX = TENGAH_X;
+                    targetY = ATAS + 70;
+                }
+
+                const dx = targetX - lawan.x;
+                const dy = targetY - lawan.y;
+                const jarak = Math.hypot(dx, dy);
+                const langkah = Math.min(jarak, KECEPATAN_LAWAN * dt);
+                if (jarak > 0) {
+                    lawan.x += (dx / jarak) * langkah;
+                    lawan.y += (dy / jarak) * langkah;
+                }
+            }
+
+            function gerakkanBola(dt) {
+                const yLama = bola.y;
+
+                bola.x += bola.vx * dt;
+                bola.y += bola.vy * dt;
+                bola.z += bola.vz * dt;
+                bola.vz -= GRAVITASI * dt;
+
+                const pemukul = bola.pemukulTerakhir;
+                const penerima = lawanDari(pemukul);
+
+                // --- Melewati net ---
+                if (sisiDari(yLama) !== sisiDari(bola.y)) {
+                    if (bola.pantulanLantai > 0) {
+                        // Bola sudah memantul lalu keluar dari sisi penerima: pemukul menang
+                        return berikanPoin(pemukul, "Bola memantul kembali melewati net");
+                    }
+                    if (bola.z < TINGGI_NET) {
+                        return berikanPoin(penerima, "Bola tersangkut di net");
+                    }
+                }
+
+                // --- Memantul di lantai ---
+                if (bola.z <= 0 && bola.vz < 0) {
+                    bola.z = 0;
+                    if (sisiDari(bola.y) === pemukul) {
+                        return berikanPoin(penerima, "Bola jatuh di sisi sendiri");
+                    }
+                    bola.pantulanLantai++;
+                    if (bola.pantulanLantai === 2) {
+                        return berikanPoin(pemukul, "Bola memantul dua kali");
+                    }
+                    bola.vz = -bola.vz * 0.7;
+                    bola.vx *= 0.85;
+                    bola.vy *= 0.85;
+                }
+
+                // --- Memantul di dinding kaca ---
+                const kenaDindingSamping = bola.x < KIRI || bola.x > KANAN;
+                const kenaDindingBelakang = bola.y < ATAS || bola.y > BAWAH;
+
+                if (kenaDindingSamping || kenaDindingBelakang) {
+                    // Di sisi lawan, bola wajib memantul di lantai dulu sebelum kena dinding
+                    if (sisiDari(bola.y) === penerima && bola.pantulanLantai === 0) {
+                        return berikanPoin(penerima, "Bola langsung kena dinding (out)");
+                    }
+                    if (kenaDindingSamping) {
+                        bola.x = batasi(bola.x, KIRI, KANAN);
+                        bola.vx = -bola.vx * 0.7;
+                    }
+                    if (kenaDindingBelakang) {
+                        bola.y = batasi(bola.y, ATAS, BAWAH);
+                        bola.vy = -bola.vy * 0.7;
+                    }
+                }
+            }
+
+            // ===== MENGGAMBAR =====
+            function gambarLapangan() {
+                // Latar & dinding kaca
+                ctx.fillStyle = "#0c1a2e";
+                ctx.fillRect(0, 0, kanvas.width, kanvas.height);
+                ctx.fillStyle = "rgba(186, 230, 253, 0.25)";
+                ctx.fillRect(KIRI - 12, ATAS - 12, LEBAR + 24, BAWAH - ATAS + 24);
+
+                // Lantai lapangan
+                ctx.fillStyle = "#1d4ed8";
+                ctx.fillRect(KIRI, ATAS, LEBAR, BAWAH - ATAS);
+
+                // Garis-garis
+                ctx.strokeStyle = "#f8fafc";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(KIRI, NET_Y - GARIS_SERVIS);
+                ctx.lineTo(KANAN, NET_Y - GARIS_SERVIS);
+                ctx.moveTo(KIRI, NET_Y + GARIS_SERVIS);
+                ctx.lineTo(KANAN, NET_Y + GARIS_SERVIS);
+                ctx.moveTo(TENGAH_X, NET_Y - GARIS_SERVIS);
+                ctx.lineTo(TENGAH_X, NET_Y + GARIS_SERVIS);
+                ctx.stroke();
+
+                // Net
+                ctx.strokeStyle = "#e2e8f0";
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(KIRI - 8, NET_Y);
+                ctx.lineTo(KANAN + 8, NET_Y);
+                ctx.stroke();
+                ctx.fillStyle = "#94a3b8";
+                ctx.fillRect(KIRI - 12, NET_Y - 5, 6, 10);
+                ctx.fillRect(KANAN + 6, NET_Y - 5, 6, 10);
+            }
+
+            function gambarOrang(orang) {
+                // Bayangan
+                ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+                ctx.beginPath();
+                ctx.ellipse(orang.x, orang.y + 8, 13, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Badan
+                ctx.fillStyle = orang.warna;
+                ctx.beginPath();
+                ctx.arc(orang.x, orang.y, 12, 0, Math.PI * 2);
+                ctx.fill();
+                // Raket
+                ctx.strokeStyle = "#1e293b";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(orang.x + 16, orang.y - 4, 7, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            function gambarBola() {
+                // Bayangan di lantai menunjukkan posisi bola sebenarnya
+                ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+                ctx.beginPath();
+                ctx.ellipse(bola.x, bola.y, 5, 2.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Bola digambar lebih tinggi sesuai ketinggiannya (z)
+                ctx.fillStyle = "#facc15";
+                ctx.beginPath();
+                ctx.arc(bola.x, bola.y - bola.z, 5 + bola.z / 40, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            function gambar() {
+                gambarLapangan();
+                if (!pemain) return;
+
+                // Yang lebih jauh (atas) digambar duluan
+                gambarOrang(lawan);
+                gambarOrang(pemain);
+                gambarBola();
+
+                if (status === "servis" && pemegangServis === "pemain") {
+                    ctx.fillStyle = "#fef08a";
+                    ctx.font = "bold 14px system-ui";
+                    ctx.textAlign = "center";
+                    ctx.fillText("Tekan Spasi untuk servis", TENGAH_X, NET_Y + 50);
+                }
+            }
+
+            // ===== KONTROL =====
+            function tombolUtamaDitekan() {
+                if (status === "menunggu" || status === "selesai") mulaiPertandingan();
+                else if (status === "servis" && pemegangServis === "pemain") servis();
+            }
+
+            const tombolKeyboard = {
+                ArrowUp: "atas", w: "atas", W: "atas",
+                ArrowDown: "bawah", s: "bawah", S: "bawah",
+                ArrowLeft: "kiri", a: "kiri", A: "kiri",
+                ArrowRight: "kanan", d: "kanan", D: "kanan",
+            };
+
+            document.addEventListener("keydown", (e) => {
+                if (e.key === " ") {
+                    e.preventDefault();
+                    tombolUtamaDitekan();
+                    return;
+                }
+                const arah = tombolKeyboard[e.key];
+                if (arah) {
+                    e.preventDefault(); // supaya halaman tidak ikut menggulir
+                    ditekan[arah] = true;
+                }
+            });
+
+            document.addEventListener("keyup", (e) => {
+                const arah = tombolKeyboard[e.key];
+                if (arah) ditekan[arah] = false;
+            });
+
+            tombolUtama.addEventListener("click", () => {
+                tombolUtama.blur(); // agar Spasi tidak ikut "mengklik" tombol ini lagi
+                tombolUtamaDitekan();
+            });
+
+            // Tombol arah di layar: ditahan = terus bergerak
+            document.querySelectorAll(".tombol-arah button").forEach((tombol) => {
+                const arah = tombol.dataset.arah;
+                tombol.addEventListener("pointerdown", (e) => {
+                    e.preventDefault();
+                    ditekan[arah] = true;
+                });
+                ["pointerup", "pointerleave", "pointercancel"].forEach((nama) => {
+                    tombol.addEventListener(nama, () => (ditekan[arah] = false));
+                });
+            });
+
+            gambar();
+        </script>
+    </body>
+</html>
