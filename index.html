@@ -1,12 +1,105 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Document</title>
+        <title>Kegiatan Non-Akademik | Vokasi UI</title>
+        <meta name="description" content="Portal informasi kegiatan non-akademik mahasiswa Program Pendidikan Vokasi Universitas Indonesia.">
+        <link rel="stylesheet" href="css/style.css">
     </head>
     <body>
+<<<<<<< Updated upstream
         <h1>Hello, World!</h1>
         <h2>This is a sample HTML document.</h2>
+=======
+        <header class="navbar">
+            <div class="container navbar-inner">
+                <a href="#" class="brand">
+                    <span class="brand-logo">V</span>
+                    <span class="brand-text">
+                        <strong>Vokasi UI</strong>
+                        <small>Kegiatan Non-Akademik</small>
+                    </span>
+                </a>
+                <button class="nav-toggle" aria-label="Buka menu" aria-expanded="false">☰</button>
+                <nav class="nav-links">
+                    <a href="#kegiatan">Kegiatan</a>
+                    <a href="#organisasi">Organisasi</a>
+                    <a href="#tentang">Tentang</a>
+                </nav>
+            </div>
+        </header>
+
+        <section class="hero">
+            <div class="container">
+                <h1>Jelajahi Kegiatan Non-Akademik<br>Mahasiswa Vokasi UI</h1>
+                <p>Rangkuman kegiatan mahasiswa Sekolah Vokasi UI tahun 2026 yang bersumber dari berita resmi vokasi.ui.ac.id.</p>
+                <div class="stats" id="stats"></div>
+            </div>
+        </section>
+
+        <main>
+            <section id="kegiatan" class="container section">
+                <div class="section-head">
+                    <h2>Daftar Kegiatan</h2>
+                    <p>Cari dan saring kegiatan sesuai minatmu.</p>
+                </div>
+
+                <div class="toolbar">
+                    <input type="search" id="search" placeholder="Cari kegiatan, penyelenggara, atau lokasi..." aria-label="Cari kegiatan">
+                    <select id="sort" aria-label="Urutkan">
+                        <option value="terbaru">Terbaru</option>
+                        <option value="terlama">Terlama</option>
+                        <option value="nama">Nama (A–Z)</option>
+                    </select>
+                </div>
+
+                <div class="chips" id="categories" role="tablist" aria-label="Kategori"></div>
+
+                <p class="result-count" id="result-count"></p>
+                <div class="grid" id="event-list"></div>
+                <p class="empty" id="empty" hidden>Tidak ada kegiatan yang cocok dengan pencarianmu.</p>
+            </section>
+
+            <section id="organisasi" class="section section-alt">
+                <div class="container">
+                    <div class="section-head">
+                        <h2>Organisasi &amp; UKM</h2>
+                        <p>Wadah mahasiswa untuk berkembang di luar kelas.</p>
+                    </div>
+                    <div class="org-grid" id="org-list"></div>
+                </div>
+            </section>
+
+            <section id="tentang" class="container section about">
+                <h2>Tentang Portal Ini</h2>
+                <p>
+                    Portal ini merangkum kegiatan non-akademik mahasiswa Sekolah Vokasi Universitas Indonesia.
+                    Setiap kegiatan diambil dari berita resmi dan dilengkapi tautan sumber agar dapat diverifikasi.
+                    Jika sumber tidak menyebutkan tanggal pelaksanaan, yang ditampilkan adalah tanggal terbit berita.
+                </p>
+                <p>
+                    Untuk menambah kegiatan, tambahkan entri pada file <code>js/data.js</code> beserta tautan sumbernya.
+                    Informasi terbaru dapat dilihat di
+                    <a href="https://vokasi.ui.ac.id/web/" target="_blank" rel="noopener">vokasi.ui.ac.id</a> dan
+                    <a href="https://bem.vokasi.ui.ac.id/" target="_blank" rel="noopener">bem.vokasi.ui.ac.id</a>.
+                </p>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="container">
+                <p>&copy; <span id="year"></span> Program Pendidikan Vokasi Universitas Indonesia — Kelas TI-C 2026</p>
+            </div>
+        </footer>
+
+        <dialog id="detail" class="modal">
+            <button class="modal-close" aria-label="Tutup">&times;</button>
+            <div id="detail-body"></div>
+        </dialog>
+
+        <script src="js/data.js"></script>
+        <script src="js/app.js"></script>
+>>>>>>> Stashed changes
     </body>
 </html>
