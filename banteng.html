@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Dikejar Banteng</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                padding: 1rem;
+                font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+                background: #3f1d0b;
+                color: #fef3c7;
+            }
+
+            h1 {
+                margin: 0;
+            }
+
+            .info {
+                display: flex;
+                gap: 2rem;
+                font-size: 1.1rem;
+            }
+
+            .arena {
+                position: relative;
+                width: min(480px, 100%);
+            }
+
+            canvas {
+                display: block;
+                width: 100%;
+                aspect-ratio: 1;
+                border: 4px solid #92400e;
+                border-radius: 10px;
+            }
+
+            .pesan {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                margin: 0;
+                padding: 1rem;
+                text-align: center;
+                font-size: 1.2rem;
+                background: rgba(41, 18, 6, 0.75);
+                border-radius: 10px;
+                white-space: pre-line;
+            }
+
+            .pesan[hidden] {
+                display: none;
+            }
+
+            button {
+                font: inherit;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                background: #f59e0b;
+                color: #451a03;
+                font-weight: 700;
+                padding: 0.6rem 1.5rem;
+            }
+
+            .tombol-arah {
+                display: grid;
+                grid-template-columns: repeat(3, 56px);
+                gap: 6px;
+                touch-action: none;
+                user-select: none;
+            }
+
+            .tombol-arah button {
+                height: 56px;
+                padding: 0;
+                background: #78350f;
+                color: #fef3c7;
+            }
+
+            .tombol-arah [data-arah="atas"] { grid-column: 2; }
+            .tombol-arah [data-arah="kiri"] { grid-column: 1; grid-row: 2; }
+            .tombol-arah [data-arah="bawah"] { grid-column: 2; grid-row: 2; }
+            .tombol-arah [data-arah="kanan"] { grid-column: 3; grid-row: 2; }
+
+            .petunjuk {
+                margin: 0;
+                color: #fcd34d;
+                font-size: 0.9rem;
+                text-align: center;
+                max-width: 480px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>🐂 Dikejar Banteng!</h1>
+
+        <div class="info">
+            <span>Skor: <strong id="skor">0</strong></span>
+            <span>Terbaik: <strong id="terbaik">0</strong></span>
+        </div>
+
+        <div class="arena">
+            <canvas id="kanvas" width="480" height="480"></canvas>
+            <p class="pesan" id="pesan">Lari dari banteng!
+Tekan Spasi atau tombol Mulai</p>
+        </div>
+
+        <button id="tombol-mulai">Mulai</button>
+
+        <div class="tombol-arah">
+            <button data-arah="atas" aria-label="Atas">▲</button>
+            <button data-arah="kiri" aria-label="Kiri">◀</button>
+            <button data-arah="bawah" aria-label="Bawah">▼</button>
+            <button data-arah="kanan" aria-label="Kanan">▶</button>
+        </div>
+
+        <p class="petunjuk">
+            Gerak: tombol panah / WASD · Spasi = mulai / jeda<br>
+            Kalau banteng berhenti dan gemetar, dia akan <b>menyeruduk lurus</b> — cepat menghindar ke samping!
+            Ambil 🪙 untuk bonus +5.
+        </p>
+
+        <script>
+            // ===== PENGATURAN =====
+            const kanvas = document.getElementById("kanvas");
+            const ctx = kanvas.getContext("2d");
+            const LEBAR = kanvas.width;
+            const TINGGI = kanvas.height;
+
+            const KECEPATAN_PEMAIN = 200;      // piksel per detik
+            const KECEPATAN_BANTENG_AWAL = 90; // piksel per detik, makin lama makin cepat
+            const KECEPATAN_SERUDUK = 520;
+            const LAMA_ANCANG = 0.8;           // detik banteng bersiap sebelum menyeruduk
+            const LAMA_SERUDUK = 0.7;
+
+            const elSkor = document.getElementById("skor");
+            const elTerbaik = document.getElementById("terbaik");
+            const elPesan = document.getElementById("pesan");
+            const tombolMulai = document.getElementById("tombol-mulai");
+
+            // ===== STATUS GAME =====
+            let pemain, banteng, koin, waktu, bonus, waktuTerakhir;
+            let status = "menunggu"; // "menunggu" | "main" | "jeda" | "selesai"
+            let terbaik = Number(localStorage.getItem("banteng-terbaik")) || 0;
+            elTerbaik.textContent = terbaik;
+
+            // Tombol arah yang sedang ditekan
+            const ditekan = { atas: false, bawah: false, kiri: false, kanan: false };
+
+            function mulaiGame() {
+                pemain = { x: LEBAR / 2, y: TINGGI - 60, r: 14, hadapKanan: true };
+                banteng = {
+                    x: LEBAR / 2,
+                    y: 60,
+                    r: 22,
+                    mode: "kejar",          // "kejar" | "ancang" | "seruduk"
+                    sisaWaktuMode: 0,
+                    jedaSeruduk: acak(2.5, 4), // detik sampai seruduk berikutnya
+                    arahX: 0,
+                    arahY: 0,
+                    hadapKanan: false,
+                };
+                waktu = 0;
+                bonus = 0;
+                taruhKoin();
+                lanjutkan();
+            }
+
+            function lanjutkan() {
+                status = "main";
+                elPesan.hidden = true;
+                tombolMulai.textContent = "Jeda";
+                waktuTerakhir = performance.now();
+                requestAnimationFrame(putaran);
+            }
+
+            function jeda() {
+                status = "jeda";
+                tampilkanPesan("Jeda — tekan Spasi untuk lanjut");
+                tombolMulai.textContent = "Lanjut";
+            }
+
+            function gameOver() {
+                status = "selesai";
+                const skor = hitungSkor();
+                if (skor > terbaik) {
+                    terbaik = skor;
+                    localStorage.setItem("banteng-terbaik", terbaik);
+                    elTerbaik.textContent = terbaik;
+                }
+                tampilkanPesan(`💥 Kena seruduk!\nKamu bertahan ${waktu.toFixed(1)} detik\nSkor: ${skor}`);
+                tombolMulai.textContent = "Main Lagi";
+            }
+
+            function tampilkanPesan(teks) {
+                elPesan.textContent = teks;
+                elPesan.hidden = false;
+            }
+
+            function hitungSkor() {
+                return Math.floor(waktu) + bonus;
+            }
+
+            // ===== FUNGSI BANTU =====
+            function acak(min, max) {
+                return min + Math.random() * (max - min);
+            }
+
+            function jarak(a, b) {
+                return Math.hypot(a.x - b.x, a.y - b.y);
+            }
+
+            function batasi(nilai, min, max) {
+                return Math.max(min, Math.min(max, nilai));
+            }
+
+            // Taruh koin di tempat acak yang tidak terlalu dekat dengan pemain
+            function taruhKoin() {
+                do {
+                    koin = { x: acak(30, LEBAR - 30), y: acak(30, TINGGI - 30), r: 12 };
+                } while (jarak(koin, pemain) < 120);
+            }
+
+            // ===== PUTARAN GAME (dipanggil tiap frame) =====
+            function putaran(sekarang) {
+                if (status !== "main") return;
+
+                // dt = selisih waktu antar-frame dalam detik (dibatasi supaya tidak "loncat")
+                const dt = Math.min((sekarang - waktuTerakhir) / 1000, 0.05);
+                waktuTerakhir = sekarang;
+
+                perbarui(dt);
+                gambar();
+
+                if (status === "main") requestAnimationFrame(putaran);
+            }
+
+            function perbarui(dt) {
+                waktu += dt;
+                gerakkanPemain(dt);
+                gerakkanBanteng(dt);
+
+                // Ambil koin
+                if (jarak(pemain, koin) < pemain.r + koin.r) {
+                    bonus += 5;
+                    taruhKoin();
+                }
+
+                elSkor.textContent = hitungSkor();
+
+                // Tertabrak banteng?
+                if (jarak(pemain, banteng) < pemain.r + banteng.r - 6) {
+                    gameOver();
+                }
+            }
+
+            function gerakkanPemain(dt) {
+                let dx = 0;
+                let dy = 0;
+                if (ditekan.kiri) dx -= 1;
+                if (ditekan.kanan) dx += 1;
+                if (ditekan.atas) dy -= 1;
+                if (ditekan.bawah) dy += 1;
+
+                // Supaya gerak diagonal tidak lebih cepat
+                const panjang = Math.hypot(dx, dy) || 1;
+                pemain.x += (dx / panjang) * KECEPATAN_PEMAIN * dt;
+                pemain.y += (dy / panjang) * KECEPATAN_PEMAIN * dt;
+
+                pemain.x = batasi(pemain.x, pemain.r, LEBAR - pemain.r);
+                pemain.y = batasi(pemain.y, pemain.r, TINGGI - pemain.r);
+
+                if (dx !== 0) pemain.hadapKanan = dx > 0;
+            }
+
+            function gerakkanBanteng(dt) {
+                const b = banteng;
+
+                if (b.mode === "kejar") {
+                    // Berjalan mendekati pemain, makin lama makin cepat
+                    const kecepatan = KECEPATAN_BANTENG_AWAL + waktu * 4;
+                    const dx = pemain.x - b.x;
+                    const dy = pemain.y - b.y;
+                    const panjang = Math.hypot(dx, dy) || 1;
+                    b.x += (dx / panjang) * kecepatan * dt;
+                    b.y += (dy / panjang) * kecepatan * dt;
+                    b.hadapKanan = dx > 0;
+
+                    b.jedaSeruduk -= dt;
+                    if (b.jedaSeruduk <= 0) {
+                        b.mode = "ancang";
+                        b.sisaWaktuMode = LAMA_ANCANG;
+                    }
+                } else if (b.mode === "ancang") {
+                    // Diam dan membidik pemain
+                    const dx = pemain.x - b.x;
+                    const dy = pemain.y - b.y;
+                    const panjang = Math.hypot(dx, dy) || 1;
+                    b.arahX = dx / panjang;
+                    b.arahY = dy / panjang;
+                    b.hadapKanan = dx > 0;
+
+                    b.sisaWaktuMode -= dt;
+                    if (b.sisaWaktuMode <= 0) {
+                        // Arah dikunci, lalu menyeruduk lurus
+                        b.mode = "seruduk";
+                        b.sisaWaktuMode = LAMA_SERUDUK;
+                    }
+                } else if (b.mode === "seruduk") {
+                    b.x += b.arahX * KECEPATAN_SERUDUK * dt;
+                    b.y += b.arahY * KECEPATAN_SERUDUK * dt;
+
+                    b.sisaWaktuMode -= dt;
+                    const kenaDinding =
+                        b.x < b.r || b.x > LEBAR - b.r || b.y < b.r || b.y > TINGGI - b.r;
+                    if (b.sisaWaktuMode <= 0 || kenaDinding) {
+                        b.mode = "kejar";
+                        // Makin lama, seruduk makin sering
+                        b.jedaSeruduk = acak(1.5, 3.5) * Math.max(0.5, 1 - waktu / 120);
+                    }
+                }
+
+                b.x = batasi(b.x, b.r, LEBAR - b.r);
+                b.y = batasi(b.y, b.r, TINGGI - b.r);
+            }
+
+            // ===== MENGGAMBAR =====
+            function gambarEmoji(emoji, x, y, ukuran, hadapKanan) {
+                ctx.save();
+                ctx.translate(x, y);
+                // Emoji aslinya menghadap ke kiri, jadi dibalik kalau menghadap kanan
+                if (hadapKanan) ctx.scale(-1, 1);
+                ctx.font = `${ukuran}px serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(emoji, 0, 0);
+                ctx.restore();
+            }
+
+            function gambarArena() {
+                // Pasir arena
+                ctx.fillStyle = "#e7c27d";
+                ctx.fillRect(0, 0, LEBAR, TINGGI);
+                // Lingkaran tengah arena
+                ctx.strokeStyle = "rgba(146, 64, 14, 0.3)";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(LEBAR / 2, TINGGI / 2, 120, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            function gambar() {
+                gambarArena();
+                if (!pemain) return;
+
+                // Koin
+                gambarEmoji("🪙", koin.x, koin.y, 24, false);
+
+                const b = banteng;
+
+                // Saat ancang-ancang: tampilkan garis bidikan dan banteng gemetar
+                let goyang = 0;
+                if (b.mode === "ancang") {
+                    goyang = Math.sin(waktu * 60) * 3;
+                    ctx.strokeStyle = "rgba(220, 38, 38, 0.5)";
+                    ctx.lineWidth = b.r * 2;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(b.x, b.y);
+                    ctx.lineTo(b.x + b.arahX * 360, b.y + b.arahY * 360);
+                    ctx.stroke();
+                    gambarEmoji("❗", b.x, b.y - b.r - 14, 22, false);
+                }
+
+                // Debu di belakang banteng saat menyeruduk
+                if (b.mode === "seruduk") {
+                    gambarEmoji("💨", b.x - b.arahX * 30, b.y - b.arahY * 30, 26, b.arahX < 0);
+                }
+
+                gambarEmoji("🐂", b.x + goyang, b.y, b.r * 2.2, b.hadapKanan);
+                gambarEmoji("🏃", pemain.x, pemain.y, pemain.r * 2.4, pemain.hadapKanan);
+            }
+
+            // ===== KONTROL =====
+            function tombolMulaiDitekan() {
+                if (status === "main") jeda();
+                else if (status === "jeda") lanjutkan();
+                else mulaiGame();
+            }
+
+            const tombolKeyboard = {
+                ArrowUp: "atas", w: "atas", W: "atas",
+                ArrowDown: "bawah", s: "bawah", S: "bawah",
+                ArrowLeft: "kiri", a: "kiri", A: "kiri",
+                ArrowRight: "kanan", d: "kanan", D: "kanan",
+            };
+
+            document.addEventListener("keydown", (e) => {
+                if (e.key === " ") {
+                    e.preventDefault();
+                    tombolMulaiDitekan();
+                    return;
+                }
+                const arah = tombolKeyboard[e.key];
+                if (arah) {
+                    e.preventDefault(); // supaya halaman tidak ikut menggulir
+                    ditekan[arah] = true;
+                }
+            });
+
+            document.addEventListener("keyup", (e) => {
+                const arah = tombolKeyboard[e.key];
+                if (arah) ditekan[arah] = false;
+            });
+
+            tombolMulai.addEventListener("click", () => {
+                tombolMulai.blur(); // agar Spasi tidak ikut "mengklik" tombol ini lagi
+                tombolMulaiDitekan();
+            });
+
+            // Tombol arah di layar: ditahan = terus bergerak
+            document.querySelectorAll(".tombol-arah button").forEach((tombol) => {
+                const arah = tombol.dataset.arah;
+                tombol.addEventListener("pointerdown", (e) => {
+                    e.preventDefault();
+                    ditekan[arah] = true;
+                });
+                ["pointerup", "pointerleave", "pointercancel"].forEach((nama) => {
+                    tombol.addEventListener(nama, () => (ditekan[arah] = false));
+                });
+            });
+
+            gambar();
+        </script>
+    </body>
+</html>
